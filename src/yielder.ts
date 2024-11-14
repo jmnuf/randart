@@ -368,12 +368,12 @@ export function* unwrap<T>(promise: Promise<T>): Generator<unknown, T, T> {
 }
 
 type Unwrap<T> = T extends (...args: any) => Promise<infer U>
-  ? U
+  ? Unwrap<U>
   : T extends (...args: any) => infer U
-    ? U
+    ? Unwrap<U>
     : T extends Promise<infer U>
-      ? U
-      : T extends Generator<unknown, infer U>
+      ? Unwrap<U>
+      : T extends Generator<any, infer U>
         ? Unwrap<U>
         : T;
 

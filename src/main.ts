@@ -100,7 +100,7 @@ function* generate_random_art(
           (n) => gen_node([], n, 20),
           (opt) => opt.unwrap() as TripleNode,
           (node) => {
-            return flatten_node(node);
+            return flatten_node(node) as Generator<any, TripleNode>;
           },
           (node) => {
             codeElem.innerText = node_as_str(node);
@@ -146,7 +146,7 @@ run(function* main() {
     }
     if (!Result.is_err(result)) {
       pElem.innerText = "Function used:";
-      node = result.value;
+      node = result.value as TripleNode;
     }
     genBtn.disabled = false;
     animBtn.disabled = false;
@@ -170,7 +170,7 @@ run(function* main() {
       pipe(
         () => genPixelsBuffer(),
         (buff) => render_pixels(node, buff),
-        (buff) => new ImageData(buf, WIDTH, HEIGHT),
+        (buff) => new ImageData(buff, WIDTH, HEIGHT),
         (imgData) => {
           ctx.clearRect(0, 0, WIDTH, HEIGHT);
           ctx.putImageData(imgData, 0, 0);
@@ -458,7 +458,7 @@ function node_eval(
   }
 }
 
-function* flatten_node(n: SomeNode): SomeNode {
+function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
   switch (n.kind) {
     case NK.Sqrt:
       const valueN = yield* flatten_node(n.value);
@@ -473,8 +473,8 @@ function* flatten_node(n: SomeNode): SomeNode {
       const rhsN = yield* flatten_node(n.rhs);
       if (rhsN.kind != NK.Number) return n;
       if (n.kind == NK.Mult) return number_node(lhsN.value * rhsN.value);
-      if (n.kind == NK.Mod) return number_mode(lhsN.value % rhsN.value);
-      if (n.kind == NK.Add) return number_mode(lhsN.value + rhsN.value);
+      if (n.kind == NK.Mod) return number_node(lhsN.value % rhsN.value);
+      if (n.kind == NK.Add) return number_node(lhsN.value + rhsN.value);
       if (n.kind == NK.GT) return bool_node(lhsN.value > rhsN.value);
       return n;
     case NK.Triple:
@@ -516,7 +516,10 @@ function* gen_rule(g: Grammar, rule: number, depth: number = 25) {
   return Option.Some(f);
 }
 
-function* render_pixels(node: TripleNode, buff: Uint8ClampedArray) {
+function* render_pixels(
+  node: TripleNode,
+  buff: Uint8ClampedArray,
+): Generator<unknown, Uint8ClampedArray> {
   const t = Math.sin(Date.now());
   for (let y = 0; y < HEIGHT; ++y) {
     const ny = (y / HEIGHT) * 2 - 1;
