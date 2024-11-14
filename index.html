@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + TS</title>
+    <style>
+      code {
+  background-color: #eee;
+  border-radius: 3px;
+  font-family: courier, monospace;
+  padding: 0 3px;
+  color: black;
+      }
+      .hide {
+	  display: none;
+      }
+      </style>
+  </head>
+  <body style="background: black; color: white;">
+    <div id="app" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+      <canvas id="canvas" style="border: 5px solid red;"></canvas>
+      <div style="display: flex; gap: 2rem;">
+	<button id="genBtn" disabled>Generate</button>
+	<!-- TODO: Probably remove this cause functions take too long to draw a single frame -->
+	<button id="animBtn" class="hide" disabled>Animate</button>
+</div>
+      <p id="ctxP">Loading</p>
+      <code id="formula" style="width: 50%;"></code>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
