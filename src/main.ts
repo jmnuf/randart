@@ -127,6 +127,7 @@ function* generate_random_art(
 run(function* main() {
   const pElem = Q("#ctxP").unwrap();
   const genBtn = Q<HTMLButtonElement>("#genBtn").unwrap();
+  const framesBtn = Q<HTMLButtonElement>("#framesBtn").unwrap();
   const animBtn = Q<HTMLButtonElement>("#animBtn").unwrap();
   const codeElem = Q("#formula").unwrap();
   const cnvRes = getCanvas();
@@ -136,36 +137,58 @@ run(function* main() {
   }
   const { ctx } = cnvRes.value;
   let node: TripleNode;
+  let frames = [];
   function* doRandomArtGeneration() {
     pElem.innerText = "Generating...";
     genBtn.disabled = true;
     animBtn.disabled = true;
+    framesBtn.disabled = true;
     let result = yield* generate_random_art(ctx, codeElem);
     if (Result.is_err(result)) {
       pElem.innerText = `Generation Failed: ${result.error}`;
     }
     if (!Result.is_err(result)) {
+      frames.length = 0;
       pElem.innerText = "Function used:";
       node = result.value as TripleNode;
     }
+    framesBtn.disabled = false;
     genBtn.disabled = false;
     animBtn.disabled = false;
   }
   genBtn.addEventListener("click", () => {
     void run(doRandomArtGeneration());
   });
-  animBtn.addEventListener("click", () => {
-    animated = !animated;
-    if (animated) {
-      animBtn.innerText = "Stop Animating";
-    } else {
-      animBtn.innerText = "Start Animating";
-    }
+  // animBtn.addEventListener("click", () => {
+  //   animated = !animated;
+  //   if (animated) {
+  //     animBtn.innerText = "Stop Animating";
+  //   } else {
+  //     animBtn.innerText = "Start Animating";
+  //   }
+  // });
+  framesBtn.addEventListener("click", () => {
+    framesBtn.disabled = true;
+    void run(render_frames(node, pElem)).then((newFrames) => {
+      frames = newFrames;
+      pElem.innerText = "Displaying frames...";
+    });
   });
   run(() => doRandomArtGeneration());
+  const display_frame = () => {
+    const cur = display_frame.current ?? 0;
+    const frame = frames[cur];
+    const imgData = new ImageData(frame, WIDTH, HEIGHT);
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.putImageData(imgData, 0, 0);
+    display_frame.current = (cur + 1) % frames.length;
+  };
   const animTick = () => {
     requestAnimationFrame(animTick);
-    if (!animated || !node) return;
+    if (!animated || !node) {
+      if (node && frames.length > 1) display_frame();
+      return;
+    }
     void run(
       pipe(
         () => genPixelsBuffer(),
@@ -462,16 +485,16 @@ function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
   switch (n.kind) {
     case NK.Sqrt:
       const valueN = yield* flatten_node(n.value);
-      if (valueN.kind != NK.Number) return n;
+      if (valueN.kind != NK.Number) return { kind: n.kind, value: valueN };
       return number_node(Math.sqrt(valueN.value));
     case NK.Mult:
     case NK.Mod:
     case NK.Add:
     case NK.GT:
       const lhsN = yield* flatten_node(n.lhs);
-      if (lhsN.kind != NK.Number) return n;
       const rhsN = yield* flatten_node(n.rhs);
-      if (rhsN.kind != NK.Number) return n;
+      if (lhsN.kind != NK.Number || rhsN.kind != NK.Number)
+        return { kind: n.kind, lhs: lhsN, rhs: rhsN };
       if (n.kind == NK.Mult) return number_node(lhsN.value * rhsN.value);
       if (n.kind == NK.Mod) return number_node(lhsN.value % rhsN.value);
       if (n.kind == NK.Add) return number_node(lhsN.value + rhsN.value);
@@ -489,7 +512,9 @@ function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
     case NK.Number:
     case NK.Bool:
     case NK.Random:
+      return n;
     default:
+      console.warn("Attempting to flatten node with no branch: ${n.kind}");
       return n;
   }
 }
@@ -519,8 +544,9 @@ function* gen_rule(g: Grammar, rule: number, depth: number = 25) {
 function* render_pixels(
   node: TripleNode,
   buff: Uint8ClampedArray,
+  def_t?: number,
 ): Generator<unknown, Uint8ClampedArray> {
-  const t = Math.sin(Date.now());
+  const t = typeof def_t == "number" ? def_t : 0;
   for (let y = 0; y < HEIGHT; ++y) {
     const ny = (y / HEIGHT) * 2 - 1;
     for (let x = 0; x < WIDTH; ++x) {
@@ -544,4 +570,42 @@ function* render_pixels(
     yield new Promise((res) => setTimeout(res, 1));
   }
   return buff;
+}
+
+function* render_frames(
+  node: TripleNode,
+  elem: HTMLElement,
+): Generator<unknown, Array<Unint8ClampedArray>> {
+  let t: number;
+  // let buffers = [];
+  let promises = [];
+
+  elem.innerText = "Rendering frames...\nFunction used:";
+
+  let i = 0,
+    c = 0;
+  for (let a = -Math.PI; a < Math.PI / 2; a += Math.PI / 59) {
+    i += 1;
+    t = Math.sin(a);
+    promises.push(
+      run(
+        pipe(
+          () => render_pixels(node, genPixelsBuffer(), t),
+          (buf) => {
+            c += 1;
+            elem.innerText = `Rendered Frames ${c}/${i}\nFunction used:`;
+            return buf;
+          },
+        ),
+      ),
+    );
+    // const buf: Unint8ClampedArray = yield* render_pixels(
+    //   node,
+    //   genPixelsBuffer(),
+    //   t,
+    // );
+    // buffers.push(buf);
+  }
+  const buffers = yield Promise.all(promises);
+  return buffers;
 }
