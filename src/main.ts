@@ -515,7 +515,7 @@ function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
   }
 }
 
-function* gen_rule(g: Grammar, rule_id: number, depth: number = 10) {
+function* gen_rule(g: Grammar, rule_id: number, depth: number = 20) {
   // TODO: Use errors instead of option
   const rule = g[rule_id];
   if (!rule || rule.length <= 0) {
