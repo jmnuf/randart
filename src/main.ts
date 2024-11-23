@@ -268,45 +268,66 @@ function sqrt_node(value: SomeNode): SqrtNode {
 function bool_node(value: boolean): BoolNode {
   return { kind: NK.Bool, value };
 }
-// TODO: Use branches and probabilities
-// type Branch = {
-//   f: SomeNode;
-//   prob: number;
-// };
-type Rule = Array<SomeNode>;
+
+type Branch = {
+  f: SomeNode;
+  prob: number;
+};
+function branch(f: SomeNode, prob: number = 0) {
+  return { f, prob };
+}
+type Rule = Array<Branch>;
 type Grammar = Array<Rule>;
+
 function default_grammar() {
   `
 // Grammar rules
 0:E := (C, C, C)
 1:A := <Random [-1, 1]> | X | Y | T | Sqrt(Add(Add(Mult(X, X), Mult(Y, Y)), Mult(T, T)))
-2:C := A | C | Add(C, C) | Mult(C, C) | Sqrt(C)`;
+2:C := A | Add(C, C) | Mult(C, C)`;
   const rule_e_idx = 0;
   const rule_a_idx = 1;
   const rule_c_idx = 2;
   const rule_a = () => rule_node(rule_a_idx);
   const rule_c = () => rule_node(rule_c_idx);
   const g: Grammar = [];
-  g.push([triple_node(rule_c(), rule_c(), rule_c())]);
-  g.push([
-    rand_node(),
-    x_node(),
-    y_node(),
-    t_node(),
-    sqrt_node(
-      add_node(
-        add_node(mult_node(x_node(), x_node()), mult_node(y_node(), y_node())),
-        mult_node(t_node(), t_node()),
+  let rule: Rule;
+
+  // 0 := (C, C, C)^1
+  rule = [branch(triple_node(rule_c(), rule_c(), rule_c()), 1)];
+  g.push(rule);
+
+  // 1 := <random> ^ 1/5 | X ^ 1/5 | Y ^ 1/5 | T ^ 1/5 | vec_mag(x, y, t) ^ 1/5
+  rule = [
+    branch(rand_node()),
+    branch(x_node()),
+    branch(y_node()),
+    branch(t_node()),
+    branch(
+      sqrt_node(
+        add_node(
+          add_node(
+            mult_node(x_node(), x_node()),
+            mult_node(y_node(), y_node()),
+          ),
+          mult_node(t_node(), t_node()),
+        ),
       ),
     ),
-  ]);
-  g.push([
-    rule_a(),
-    rule_c(),
-    add_node(rule_c(), rule_c()),
-    mult_node(rule_c(), rule_c()),
-    sqrt_node(rule_c()),
-  ]);
+  ];
+  for (const branch of rule) {
+    branch.prob = 1 / rule.length;
+  }
+  g.push(rule);
+
+  // 2 := A ^ 2/8 | Add(C, C) ^ 3/8 | Mult(C, C) ^ 3/8
+  rule = [
+    branch(rule_a(), 1 / 4),
+    branch(add_node(rule_c(), rule_c()), 3 / 8),
+    branch(mult_node(rule_c(), rule_c()), 3 / 8),
+  ];
+  g.push(rule);
+
   return [rule_e_idx, g] as const;
 }
 
@@ -494,11 +515,11 @@ function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
   }
 }
 
-function* gen_rule(g: Grammar, rule: number, depth: number = 25) {
+function* gen_rule(g: Grammar, rule_id: number, depth: number = 10) {
   // TODO: Use errors instead of option
-  const rules = g[rule];
-  if (!rules || rules.length <= 0) {
-    console.log("Invalid rule provided");
+  const rule = g[rule_id];
+  if (!rule || rule.length <= 0) {
+    console.error("Invalid rule provided");
     return Option.None;
   }
   // if (depth <= 0) {
@@ -506,14 +527,29 @@ function* gen_rule(g: Grammar, rule: number, depth: number = 25) {
   // }
   // TODO: Maybe log a warning when we've reached depth 0
   // TODO: Use probablities
-  const node = depth <= 0 ? rules[0] : rules[Math.floor(rand(0, rules.length))];
-  const o = yield* gen_node(g, node, depth);
+  let f;
+  if (depth > 0) {
+    const p = Math.random();
+    let t = 0;
+    for (const branch of rule) {
+      t += branch.prob;
+      if (t >= p) {
+        f = branch.f;
+        break;
+      }
+    }
+    if (!f) {
+      f = rule[0].f;
+    }
+  } else {
+    f = rule[0].f;
+  }
+  const o = yield* gen_node(g, f, depth);
   if (!Enums.Option.is_some(o)) {
     //console.log("Node generation failed");
     return o;
   }
-  const f = o.unwrap();
-  return Option.Some(f);
+  return o;
 }
 
 function* render_pixels(
