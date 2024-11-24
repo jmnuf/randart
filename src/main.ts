@@ -1,4 +1,4 @@
-import { run, pipe, Enums } from "./yielder";
+import { run, pipe, Enums, sleep } from "./yielder";
 import type { Result, Option } from "./yielder";
 
 const Result = Enums.Result;
@@ -528,7 +528,7 @@ function node_eval(
       );
       return Option.None;
     default:
-      throw new Error(`Node(${n.kind}) not added to generation yet`);
+      throw new Error(`Node(${n.kind}) not added to evaluation yet`);
   }
 }
 
@@ -536,16 +536,16 @@ function* flatten_node(n: SomeNode): Generator<unknown, SomeNode> {
   switch (n.kind) {
     case NK.Sqrt:
       const valueN = yield* flatten_node(n.value);
-      if (valueN.kind != NK.Number) return n;
+      if (valueN.kind != NK.Number) return sqrt_node(valueN);
       return number_node(Math.sqrt(valueN.value));
     case NK.Mult:
     case NK.Mod:
     case NK.Add:
     case NK.GT:
       const lhsN = yield* flatten_node(n.lhs);
-      if (lhsN.kind != NK.Number) return n;
       const rhsN = yield* flatten_node(n.rhs);
-      if (rhsN.kind != NK.Number) return n;
+      if (lhsN.kind != NK.Number || rhsN.kind != NK.Number)
+        return { kind: n.kind, lhs: lhsN, rhs: rhsN };
       if (n.kind == NK.Mult) return number_node(lhsN.value * rhsN.value);
       if (n.kind == NK.Mod) return number_node(lhsN.value % rhsN.value);
       if (n.kind == NK.Add) return number_node(lhsN.value + rhsN.value);
@@ -605,7 +605,7 @@ function* gen_rule(g: Grammar, rule_id: number, depth: number = 20) {
   return o;
 }
 
-// TODO: This could possibly be a wasm function for faster render times
+// TODO: Could wasm maybe make this faster?
 // Not sure how that would work though
 function* render_pixels(
   node: TripleNode,
@@ -643,7 +643,7 @@ function* render_pixels(
         // We let the browser breath so it never freezes the page
         // We do it at every pixel to attempt to minimize part of
         // the browser lag of calculating hundreds of pixels
-        yield new Promise((res) => setTimeout(res, 0));
+        yield sleep(0);
       }
     }
   }
