@@ -200,6 +200,7 @@ run(function* main() {
     }
     genBtn.disabled = false;
     animBtn.disabled = false;
+    is_generating = false;
   }
   genBtn.addEventListener("click", () => {
     if (!is_generating) {
