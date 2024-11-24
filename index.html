@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RandArt</title>
     <style>
+      * {
+        margin: 0;
+      }
       code {
   background-color: #eee;
   border-radius: 3px;
@@ -19,17 +22,21 @@
       </style>
   </head>
   <body style="background: black; color: white;">
-    <div id="app" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+    <div id="app" style="display: flex; flex-direction: column; gap: 1rem; padding-top: 1.5rem; justify-content: center; align-items: center; text-align: center;">
       <h1>RandArt</h1>
       <h2>Random Gradient Generator I Guess?</h2>
       <canvas id="canvas" style="border: 5px solid red;"></canvas>
-      <div style="display: flex; gap: 2rem;">
+      <div style="display: flex; gap:  padding-top: 1rem;">
 	<button id="genBtn" disabled>Generate</button>
 	<!-- TODO: Probably remove this cause functions take too long to draw a single frame -->
 	<button id="animBtn" class="hide" disabled>Animate</button>
-</div>
-      <p id="ctxP">Loading</p>
-      <code id="formula" style="width: 50%;"></code>
+      </div>
+      <div style="padding-top: 1rem; padding-bottom: 1rem; display: flex; flex-direction: column; gap: 0.1rem;">
+        <label id="gen-prog-lbl" for="gen-prog-bar">Loading...</label>
+        <progress aria-label="random art generation progress" id="gen-prog-bar"></progress>
+      </div>
+      <!-- TODO: need to better format the final formula cause it gets unwieldy real fast -->
+      <code id="formula" style="width: 50%; max-height: 600px; overflow-y: auto;"></code>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
