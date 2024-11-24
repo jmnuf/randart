@@ -27,6 +27,7 @@ const NK = Enums.create(
 console.log(`NK Count is ${NK.count()}`);
 console.assert(NK.count() == 14, "Exhaustive check of NodeKind");
 
+// ERRORS
 class MissingCanvas extends Error {
   constructor() {
     super("No Canvas element was found");
@@ -43,9 +44,47 @@ class ElementNotFound extends Error {
   }
 }
 
+// HELPER
+class ProgressBar {
+  private label: string;
+  private labelElem: HTMLLabelElement;
+  private barElem: HTMLProgressElement;
+  private maxValue: number;
+  constructor(
+    label: string,
+    labelElem: HTMLLabelElement,
+    barElem: HTMLProgressElement,
+  ) {
+    this.label = label;
+    this.labelElem = labelElem;
+    this.barElem = barElem;
+    this.maxValue = 1;
+  }
+
+  set max(v: number) {
+    this.maxValue = Math.max(v, 1);
+    this.barElem.max = this.maxValue;
+  }
+  get max() {
+    return this.maxValue;
+  }
+
+  set value(v: number) {
+    v = Math.min(Math.max(v, 0), this.maxValue);
+    this.barElem.value = v;
+    const percentage = `${this.label}\n${((v / this.maxValue) * 100).toFixed(2)}%`;
+    this.labelElem.textContent = percentage;
+    this.barElem.textContent = percentage;
+  }
+
+  get value() {
+    return Number(this.barElem.value);
+  }
+}
+
 const WIDTH = 500;
 const HEIGHT = WIDTH;
-let animated = false;
+// let animated = false;
 
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
@@ -82,6 +121,8 @@ function genPixelsBuffer() {
 function* generate_random_art(
   ctx: CanvasRenderingContext2D,
   codeElem: HTMLElement,
+  plblElem: HTMLLabelElement,
+  progElem: HTMLProgressElement,
 ): Generator<unknown, Result<SomeNode, Error>> {
   try {
     const node = yield* pipe(
@@ -105,7 +146,12 @@ function* generate_random_art(
           (node) => {
             codeElem.innerText = node_as_str(node);
             return pipe(
-              () => render_pixels(node, buff),
+              () =>
+                render_pixels(
+                  node,
+                  buff,
+                  new ProgressBar("Generation progress", plblElem, progElem),
+                ),
               (buff) => [buff, node] as const,
             );
           },
@@ -125,60 +171,66 @@ function* generate_random_art(
 }
 
 run(function* main() {
-  const pElem = Q("#ctxP").unwrap();
-  const genBtn = Q<HTMLButtonElement>("#genBtn").unwrap();
-  const animBtn = Q<HTMLButtonElement>("#animBtn").unwrap();
+  // If any of these are missing, we crash
+  const genBtn = Q<HTMLButtonElement>("button#genBtn").unwrap();
+  const animBtn = Q<HTMLButtonElement>("button#animBtn").unwrap();
   const codeElem = Q("#formula").unwrap();
-  const cnvRes = getCanvas();
-  if (Result.is_err(cnvRes)) {
-    console.error(cnvRes.error);
-    return;
-  }
-  const { ctx } = cnvRes.value;
-  let node: TripleNode;
+  const plblElem = Q<HTMLLabelElement>("label#gen-prog-lbl").unwrap();
+  const progElem = Q<HTMLProgressElement>("progress#gen-prog-bar").unwrap();
+  const cnvRes = getCanvas().unwrap();
+
+  const { ctx } = cnvRes;
+  let is_generating = false;
+  // let node: TripleNode;
   function* doRandomArtGeneration() {
-    pElem.innerText = "Generating...";
+    if (is_generating) {
+      return;
+    }
+    is_generating = true;
+    plblElem.innerText = "Generating...";
     genBtn.disabled = true;
     animBtn.disabled = true;
-    let result = yield* generate_random_art(ctx, codeElem);
+    let result = yield* generate_random_art(ctx, codeElem, plblElem, progElem);
     if (Result.is_err(result)) {
-      pElem.innerText = `Generation Failed: ${result.error}`;
+      plblElem.innerText = `Generation Failed: ${result.error}`;
     }
     if (!Result.is_err(result)) {
-      pElem.innerText = "Function used:";
-      node = result.value as TripleNode;
+      plblElem.innerText = "Generation succeeded";
+      // node = result.value as TripleNode;
     }
     genBtn.disabled = false;
     animBtn.disabled = false;
   }
   genBtn.addEventListener("click", () => {
-    void run(doRandomArtGeneration());
-  });
-  animBtn.addEventListener("click", () => {
-    animated = !animated;
-    if (animated) {
-      animBtn.innerText = "Stop Animating";
-    } else {
-      animBtn.innerText = "Start Animating";
+    if (!is_generating) {
+      void run(doRandomArtGeneration());
     }
   });
+  // animBtn.addEventListener("click", () => {
+  //   animated = !animated;
+  //   if (animated) {
+  //     animBtn.innerText = "Stop Animating";
+  //   } else {
+  //     animBtn.innerText = "Start Animating";
+  //   }
+  // });
   run(() => doRandomArtGeneration());
-  const animTick = () => {
-    requestAnimationFrame(animTick);
-    if (!animated || !node) return;
-    void run(
-      pipe(
-        () => genPixelsBuffer(),
-        (buff) => render_pixels(node, buff),
-        (buff) => new ImageData(buff, WIDTH, HEIGHT),
-        (imgData) => {
-          ctx.clearRect(0, 0, WIDTH, HEIGHT);
-          ctx.putImageData(imgData, 0, 0);
-        },
-      ),
-    );
-  };
-  requestAnimationFrame(animTick);
+  // const animTick = () => {
+  //   requestAnimationFrame(animTick);
+  //   if (!animated || !node) return;
+  //   void run(
+  //     pipe(
+  //       () => genPixelsBuffer(),
+  //       (buff) => render_pixels(node, buff),
+  //       (buff) => new ImageData(buff, WIDTH, HEIGHT),
+  //       (imgData) => {
+  //         ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  //         ctx.putImageData(imgData, 0, 0);
+  //       },
+  //     ),
+  //   );
+  // };
+  // requestAnimationFrame(animTick);
 }).catch(console.error);
 
 type VarNode = {
@@ -375,7 +427,7 @@ function* gen_node(
     case NK.T:
     case NK.Number:
     case NK.Bool:
-      return Enums.Option.Some(n);
+      return Option.Some(n);
     case NK.Random:
       return Enums.Option.Some({
         kind: NK.Number,
@@ -421,6 +473,7 @@ function* gen_node(
   }
 }
 // TODO: Use Result type instead of Option type
+// TODO: Maybe have a cache for repeated operations
 function node_eval(
   n: SomeNode,
   x: number,
@@ -552,10 +605,17 @@ function* gen_rule(g: Grammar, rule_id: number, depth: number = 20) {
   return o;
 }
 
+// TODO: This could possibly be a wasm function for faster render times
+// Not sure how that would work though
 function* render_pixels(
   node: TripleNode,
   buff: Uint8ClampedArray,
+  prog?: ProgressBar,
 ): Generator<unknown, Uint8ClampedArray> {
+  if (prog) {
+    prog.max = HEIGHT * WIDTH;
+    prog.value = 0;
+  }
   const t = Math.sin(Date.now());
   for (let y = 0; y < HEIGHT; ++y) {
     const ny = (y / HEIGHT) * 2 - 1;
@@ -575,9 +635,17 @@ function* render_pixels(
       buff[index + 0] = r;
       (buff[index + 1] = g), (buff[index + 2] = b);
       buff[index + 3] = 255;
+
+      if (prog) {
+        // Progress is done is a regular flat index of point (x, y)
+        let progress_val = y * WIDTH + x;
+        prog.value = progress_val;
+        // We let the browser breath so it never freezes the page
+        // We do it at every pixel to attempt to minimize part of
+        // the browser lag of calculating hundreds of pixels
+        yield new Promise((res) => setTimeout(res, 0));
+      }
     }
-    // Let the browser breath!
-    yield new Promise((res) => setTimeout(res, 1));
   }
   return buff;
 }
