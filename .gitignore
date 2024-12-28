@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+bld.pdb
+bld.lib
+*.exe
+bld
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
