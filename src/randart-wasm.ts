@@ -1,32 +1,9 @@
 import wasmPath from "/randart.wasm?url";
 
-import { run, pipe, Enums } from "./yielder";
-import type { Result as ResultEx } from "./yielder";
-type Result<T> = ResultEx<T, Error>;
-const Result = Enums.Result;
-
-const NK = Enums.create(
-  // Enum Name:
-  "NodeKind",
-  // Keys:
-  "X",
-  "Y",
-  "T",
-  "Random",
-  "Rule",
-  "Number",
-  "Bool",
-  "Sqrt",
-  "Add",
-  "Mult",
-  "Mod",
-  "GT",
-  "Triple",
-  "If",
-);
-// @ts-expect-error TS is dumb
-type NodeKind = keyof typeof NK extends infer T ? T extends string ? (typeof NK)[T] extends number ? (typeof NK)[T] : never : never : never;
-
+import { run, pipe, safePromise } from "./yielder";
+import { NK, Result } from "./randart-types";
+import type { NodeKind } from "./randart-types";
+import * as C3 from "./c3";
 
 function make_environment<TEnv extends Record<string | symbol, Function>>(env: TEnv) {
   return new Proxy(env, {
@@ -41,117 +18,8 @@ function make_environment<TEnv extends Record<string | symbol, Function>>(env: T
   });
 }
 
-function* safeP<T>(p: Promise<T>): Generator<unknown, Result<T>> {
-  return yield p.then(v => Result.Ok(v)).catch(e => Result.Err(e as Error));
-}
-
-export type Ptr = number & { __wasm__: "PTR" };
-
-// function cstrlen(mem: Uint8Array, ptr: number) {
-//   let len = 0;
-//   while (mem[ptr] != 0) {
-//     len++;
-//     ptr++;
-//   }
-//   return len;
-// }
-
-// function read_cstr(exports: WebAssembly.Exports, ptr: Ptr) {
-//   const memory = exports.memory as WebAssembly.Memory;
-//   const mfree = exports.mem_free as (p: Ptr) => void;
-//   const buffer = memory.buffer;
-//   const mem = new Uint8Array(buffer);
-//   const len = cstrlen(mem, ptr);
-//   const bytes = new Uint8Array(buffer, ptr, len);
-//   return Object.freeze({
-//     ptr,
-//     len,
-//     str: new TextDecoder().decode(bytes),
-//     free: () => mfree(ptr),
-//   }) as C3.CStr;
-// }
-
-export namespace C3 {
-  export type CStr = Readonly<{
-    ptr: Ptr;
-    len: number;
-    str: string;
-    free(): void;
-  }>;
-
-  export type ResultFlt = Readonly<{
-    ptr: Ptr;
-    read: Readonly<{
-      ok(): boolean;
-      value(): number;
-      error(): string | null;
-    }>;
-    as_obj(): Result<number>;
-    free(): void;
-  }>;
-
-  export type ResultFlt3 = Readonly<{
-    ptr: Ptr;
-    read: Readonly<{
-      ok(): boolean;
-      value(): [number, number, number];
-      error(): string | null;
-    }>;
-    as_obj(): Result<[number, number, number]>;
-    free(): void;
-  }>;
-
-  export type NodeTriop = Readonly<{
-    ptr: Ptr;
-    read: Readonly<{
-      a(): Node;
-      b(): Node;
-      c(): Node;
-    }>;
-  }>;
-
-  export type Node = Readonly<{
-    ptr: Ptr;
-    free(): void;
-    eval_to_single(x: number, y: number, t: number, cb: (result: ResultFlt) => any): void;
-    eval_to_triple(x: number, y: number, t: number, cb: (result: ResultFlt3) => any): void;
-    read: Readonly<{
-      kind(): NodeKind;
-      value: Readonly<{
-        number(): number;
-        bool(): boolean;
-      }>;
-      rule(): number;
-      unaop(): Node | null;
-      // binop(): NodeBinop | null;
-      triop(): NodeTriop | null;
-    }>;
-    write: Readonly<{
-      kind(kind: NodeKind): void;
-      value: Readonly<{
-        number(v: number): void;
-        bool(v: boolean): void;
-      }>;
-      rule(idx: number): void;
-      unaop(node: Node | null): void;
-      // binop(binop: NodeBinop | null): void;
-      triop(triop: NodeTriop | null): void;
-    }>;
-    // as_obj(): { kind: NodeKind; value: number | boolean | undefined; rule: number | undefined; unaop: Node; triop: NodeTriop; };
-  }>;
-
-  export type Rule = Readonly<{
-    ptr: Ptr;
-    push_num(num: number, prob: number): void;
-    push_node(node: Node, prob: number): void;
-    push_rule(rule: number, prob: number): void;
-    len(): number;
-    free(): void;
-  }>;
-}
-
 function* init_wasm() {
-  const result = yield* safeP(WebAssembly.instantiateStreaming(fetch(wasmPath), {
+  const result = yield* safePromise(WebAssembly.instantiateStreaming(fetch(wasmPath), {
     env: make_environment({}),
   }));
   if (result.i == 0) {
@@ -167,8 +35,8 @@ function* init_wasm() {
   // wasm.instance.exports.memory as WebAssembly.Memory
   // const struct_node_size = (wasm.instance.exports.node_size as () => number)();
   const ResultFlt = (() => {
-    const cfree = exports.ResultFlt_free as (self: Ptr) => void;
-    return (ptr: Ptr): C3.ResultFlt => {
+    const cfree = exports.ResultFlt_free as (self: C3.Ptr) => void;
+    return (ptr: C3.Ptr): C3.ResultFlt => {
       const ref: C3.ResultFlt = {
         ptr,
         read: {
@@ -208,8 +76,8 @@ function* init_wasm() {
   })();
 
   const ResultFlt3 = (() => {
-    const cfree = exports.ResultFlt3_free as (self: Ptr) => void;
-    return (ptr: Ptr): C3.ResultFlt3 => {
+    const cfree = exports.ResultFlt3_free as (self: C3.Ptr) => void;
+    return (ptr: C3.Ptr): C3.ResultFlt3 => {
       const ref: C3.ResultFlt3 = {
         ptr,
         read: {
@@ -248,27 +116,27 @@ function* init_wasm() {
   })();
 
   const NTriop = (() => {
-    return (ptr: Ptr): C3.NodeTriop => {
+    return (ptr: C3.Ptr): C3.NodeTriop => {
       return {
         ptr,
         read: {
           a: () => Node(ptr),
-          b: () => Node((ptr + 24) as Ptr),
-          c: () => Node((ptr + (24 * 2)) as Ptr),
+          b: () => Node((ptr + 24) as C3.Ptr),
+          c: () => Node((ptr + (24 * 2)) as C3.Ptr),
         },
       };
     };
   })();
 
   const Node = (() => {
-    const as_single_value = exports.Node_as_single_value as (self: Ptr, x: number, y: number, t: number) => Ptr;
-    const as_triple_value = exports.Node_as_triple_value as (self: Ptr, x: number, y: number, t: number) => Ptr;
-    const get_value_as_number = exports.get_node_number as (self: Ptr) => number;
-    const set_value_as_number = exports.set_node_number as (self: Ptr, val: number) => void;
-    const get_value_as_bool = exports.get_node_bool as (self: Ptr) => number;
-    const set_value_as_bool = exports.set_node_bool as (self: Ptr, val: boolean) => void;
-    // const cfree = exports.tNode_free as (self: Ptr) => void;
-    return (ptr: Ptr, cfree?: (self: Ptr) => void): C3.Node => {
+    const as_single_value = exports.Node_as_single_value as (self: C3.Ptr, x: number, y: number, t: number) => C3.Ptr;
+    const as_triple_value = exports.Node_as_triple_value as (self: C3.Ptr, x: number, y: number, t: number) => C3.Ptr;
+    const get_value_as_number = exports.get_node_number as (self: C3.Ptr) => number;
+    const set_value_as_number = exports.set_node_number as (self: C3.Ptr, val: number) => void;
+    const get_value_as_bool = exports.get_node_bool as (self: C3.Ptr) => number;
+    const set_value_as_bool = exports.set_node_bool as (self: C3.Ptr, val: boolean) => void;
+    // const cfree = exports.tNode_free as (self: C3.Ptr) => void;
+    return (ptr: C3.Ptr, cfree?: (self: C3.Ptr) => void): C3.Node => {
       return {
         ptr,
         read: {
@@ -291,12 +159,12 @@ function* init_wasm() {
           },
           unaop: () => {
             const buf = (exports.memory as WebAssembly.Memory).buffer;
-            const p = new Uint32Array(buf, ptr + 12, 1)[0] as Ptr;
+            const p = new Uint32Array(buf, ptr + 12, 1)[0] as C3.Ptr;
             return Node(p);
           },
           triop: () => {
             const buf = (exports.memory as WebAssembly.Memory).buffer;
-            const p = new Uint32Array(buf, ptr + 20, 1)[0] as Ptr;
+            const p = new Uint32Array(buf, ptr + 20, 1)[0] as C3.Ptr;
             if (p == 0) return null;
             return NTriop(p);
           },
@@ -350,8 +218,8 @@ function* init_wasm() {
     };
   })();
   const TNode = (() => {
-    const alloc_new_tNode = exports.new_tnode as (kind: number) => Ptr;
-    const cfree = exports.tNode_free as (self: Ptr) => void;
+    const alloc_new_tNode = exports.new_tnode as (kind: number) => C3.Ptr;
+    const cfree = exports.tNode_free as (self: C3.Ptr) => void;
     return (kind: NodeKind): C3.Node => {
       const ptr = alloc_new_tNode(+kind);
       return Node(ptr, cfree);
@@ -366,12 +234,12 @@ function* init_wasm() {
     );
   };
   const Rule = (() => {
-    const alloc_new_rule = exports.new_rule as () => Ptr;
-    const cpush_num = (exports.Rule_push_num as (self: Ptr, num: number, prob: number) => void);
-    const cpush_node = (exports.Rule_push_node_ptr as (self: Ptr, node_ptr: Ptr, prob: number) => void);
-    const cpush_rule = (exports.Rule_push_rule as (self: Ptr, rule: number, prob: number) => void);
-    const cbranches_count = (exports.Rule_branches_count as (self: Ptr) => number);
-    const cfree = exports.free_rule as (self: Ptr) => void;
+    const alloc_new_rule = exports.new_rule as () => C3.Ptr;
+    const cpush_num = (exports.Rule_push_num as (self: C3.Ptr, num: number, prob: number) => void);
+    const cpush_node = (exports.Rule_push_node_ptr as (self: C3.Ptr, node_ptr: C3.Ptr, prob: number) => void);
+    const cpush_rule = (exports.Rule_push_rule as (self: C3.Ptr, rule: number, prob: number) => void);
+    const cbranches_count = (exports.Rule_branches_count as (self: C3.Ptr) => number);
+    const cfree = exports.free_rule as (self: C3.Ptr) => void;
 
     return (): C3.Rule => {
       const ptr = alloc_new_rule();
@@ -414,6 +282,7 @@ function* init_wasm() {
   } as const;
 }
 
+// TODO: Once done working out how the module will work, remove this code
 run(pipe(
   init_wasm(),
   c3 => {

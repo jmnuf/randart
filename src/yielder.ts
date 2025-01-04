@@ -24,7 +24,7 @@ export namespace Enums {
         unwrap: () => value,
       } as Option<T>;
     };
-    const OptNone = function () {
+    const OptNone = function() {
       return {
         tag: none_tag,
         i: 0,
@@ -83,7 +83,8 @@ export namespace Enums {
           enumerable: false,
           writable: false,
           value: () => {
-            throw new Error("Attempting to unwrap Result.Error");
+            console.error("Attempting to unwrap Result.Error");
+            throw error;
           },
         },
       });
@@ -135,7 +136,7 @@ export namespace Enums {
       TVal,
       TErr extends Error,
       T extends Result<TVal, TErr> = Result<TVal, TErr>,
-      // @ts-ignore Trust me bro
+    // @ts-ignore Trust me bro
     >(res: T): res is ResultError<TErr> {
       if (!is_obj(res)) return false;
       // @ts-ignore tag is not an exposed property of the result
@@ -159,7 +160,8 @@ export namespace Enums {
       T extends Result<TVal, TErr> = Result<TVal, TErr>,
     >(res: T): TVal {
       if (is_err(res)) {
-        throw new Error("Attempting to unwrap Enum.Result.Error");
+        console.error("Attempting to unwrap Enum.Result.Error");
+        throw res.error;
       }
       return res.value;
     }
@@ -184,23 +186,23 @@ export namespace Enums {
   ): {
     // @ts-expect-error Trust me bro
     readonly [Key in keyof TKeys as TKeys[Key]]: Key extends string
-      ? Key extends `${infer Idx extends number}`
-        ? Idx
-        : never
-      : never;
+    ? Key extends `${infer Idx extends number}`
+    ? Idx
+    : never
+    : never;
   } & {
     readonly count: () => number;
     readonly keys: () => TKeys;
     readonly values: () => (keyof TKeys extends infer Key
       ? Key extends `${infer I extends number}`
-        ? I
-        : never
+      ? I
+      : never
       : never)[];
     readonly entries: () => (keyof TKeys extends infer Key
       ? Key extends `${infer I extends number}`
-        ? // @ts-ignore "It works" - Source: trust me bro
-          [TKeys[Key], I]
-        : never
+      ? // @ts-ignore "It works" - Source: trust me bro
+      [TKeys[Key], I]
+      : never
       : never)[];
     readonly nameOf: (val: number) => Option<TKey>;
   } {
@@ -331,10 +333,10 @@ function run_step(
   }
   return step as ItStep;
 }
-type FetchArgs = typeof fetch extends (...args: infer T) => any ? T : never;
-export function net(...args: FetchArgs): Generator<Response, Response> {
-  return fetch(...args) as any;
-}
+// type FetchArgs = typeof fetch extends (...args: infer T) => any ? T : never;
+// export function net(...args: FetchArgs): Generator<Response, Response> {
+//   return fetch(...args) as any;
+// }
 
 export async function run<T>(f: Runnable<T>): Promise<T> {
   let gen = typeof f == "function" ? f() : f;
@@ -362,7 +364,7 @@ export async function run<T>(f: Runnable<T>): Promise<T> {
   return step.value;
 }
 
-export function* unwrap<T>(promise: Promise<T>): Generator<unknown, T, T> {
+export function* unwrapPromise<T>(promise: Promise<T>): Generator<unknown, T, T> {
   const r = yield promise as any;
   return r;
 }
@@ -370,12 +372,12 @@ export function* unwrap<T>(promise: Promise<T>): Generator<unknown, T, T> {
 type Unwrap<T> = T extends (...args: any) => Promise<infer U>
   ? Unwrap<U>
   : T extends (...args: any) => infer U
-    ? Unwrap<U>
-    : T extends Promise<infer U>
-      ? Unwrap<U>
-      : T extends Generator<any, infer U>
-        ? Unwrap<U>
-        : T;
+  ? Unwrap<U>
+  : T extends Promise<infer U>
+  ? Unwrap<U>
+  : T extends Generator<any, infer U>
+  ? Unwrap<U>
+  : T;
 
 type PipeTo<X, Y> = (x: Unwrap<X>) => Y;
 
@@ -469,4 +471,9 @@ export function* pipe(
     f = pipers.pop();
   }
   return x;
+}
+
+
+export function* safePromise<T>(p: Promise<T>): Generator<unknown, Result<T, Error>> {
+  return yield p.then(v => Enums.Result.Ok(v)).catch(e => Enums.Result.Err(e as Error));
 }
