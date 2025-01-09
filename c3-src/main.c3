@@ -1,3 +1,4 @@
+import std::math;
 import std::collections;
 
 enum NodeKind : char {
@@ -198,6 +199,57 @@ struct ResultFlt3 {
   String err;
 }
 
+
+struct NodeLexer {
+  usz i, n;
+  String string;
+  List(<String>) tokens;
+  Node* result;
+}
+fn void NodeLexer.init(&self, String string) {
+  self.string = string;
+  self.tokens.new_init();
+}
+
+fn char* NodeLexer.advance(&self) {
+  usz i = self.i + self.n;
+  char c = self.string[i];
+  while (c.is_space() || c == ',' || c == '(' || c == ')') {
+    if (i + 1 >= self.string.len) {
+      eprintn("Expected token but hit end of string");
+      return null;
+    }
+    c = self.string[++i];
+  }
+  self.i = i;
+  usz n = 1;
+  if (i + n > self.string.len) {
+    eprintn("Expected token of at least length 1 but hit end of string");
+    return null;
+  }
+  c = self.string[i + n];
+  while (!(c.is_space() || c == ',' || c == '(' || c == ')')) {
+    if (i + n + 1 > self.string.len) {
+      break;
+    }
+    ++n;
+    c = self.string[i + n];
+  }
+  self.n = n;
+  if (i + n >= self.string.len) {
+    eprintn("Expected end of token but hit end of string");
+    return null;
+  }
+  self.tokens.push((String) self.at());
+  return &self.string[self.i];
+}
+
+fn char[] NodeLexer.at(&self) {
+  return self.string[self.i:self.n];
+}
+
+
+
 /*
 * =======================
 * | Exported Functions
@@ -221,6 +273,148 @@ fn void ResultFlt3.free(&self) @export("ResultFlt3_free") @wasm {
   self.err.free();
   temp_free(self);
 }
+
+
+
+fn Node* parse_function_from_cstr(ZString cstr) @export("parse_function_from_cstr") @wasm {
+  String str = cstr.str_view();
+  NodeLexer l;
+  l.string = str;
+  printn(str);
+
+  if (l.advance() == null) {
+    eprintn("Failed to read function from cstr");
+    return null;
+  }
+  String token = (String) l.at();
+  String message = string::tformat("Token(%d:%d) <- %s", l.i, l.n, token);
+  printn(message);
+  message.free(allocator::temp());
+  // tokens.push(token);
+  while (l.advance() != null) {
+    token = (String) l.at();
+    message = string::tformat("Token(%d:%d) <- %s", l.i, l.n, token);
+    printn(message);
+    message.free(allocator::temp());
+    // tokens.push(token);
+  }
+
+  l.tokens.reverse();
+  List(<float>) stack;
+  stack.new_init();
+
+  DString dstr;
+  defer dstr.free();
+  dstr.append_chars("Start -> ");
+  foreach(&tok : l.tokens) {
+    dstr.append_chars(*tok);
+    dstr.append_chars(" -> ");
+  }
+  dstr.append_chars("End");
+  printn(dstr.str_view());
+  dstr.clear();
+
+  List(<String>) *tokens = @clone(l.tokens);
+  defer mem::free(tokens);
+  while (tokens.len() > 0) {
+    String tok = tokens.pop_first()!!;
+    // printfn("Checking token: %s", tok);
+    switch (tok) {
+      case "Add":
+      float a, b;
+      {
+        float! item = stack.pop();
+        if (catch excuse = (item)) {
+          eprintn("Not enough items in stack for add operation! Found 0 numbers but requires 2");
+          return null;
+        }
+        // a = anycast(item, String).to_float()!!;
+        a = item;
+      }
+      {
+        float! item = stack.pop();
+        if (catch excuse = item) {
+          eprintn("Not enough items in stack for add operation! Found only 1 number but requires 2");
+          return null;
+        }
+        // b = anycast(item, String).to_float()!!;
+        b = item;
+      }
+      float c = a + b;
+      printfn("(+ %f %f)\n= %f", a, b, c);
+      stack.push(c);
+      // printfn("Pushing to stack: %f", c);
+      break;
+
+      case "Mult":
+      float a, b;
+      {
+        float! item = stack.pop();
+        if (catch excuse = item) {
+          eprintn("Not enough items in stack for mult operation! Found 0 numbers but requires 2");
+          return null;
+        }
+        // a = anycast(item, String).to_float()!!;
+        a = item;
+      }
+      {
+        float! item = stack.pop();
+        if (catch excuse = item) {
+          eprintn("Not enough items in stack for mult operation! Found only 1 number but requires 2");
+          return null;
+        }
+        // b = anycast(item, String).to_float()!!;
+        b = item;
+      }
+      float c = a * b;
+      printfn("(* %f %f)\n= %f", a, b, c);
+      stack.push(c);
+      // printfn("Pushing to stack: %f", c);
+      break;
+
+      case "Sqrt":
+      float! item = stack.pop();
+      if (catch excuse = item) {
+        eprintn("Not enough items in stack for sqrt operation! Found 0 numbers but requires 2");
+        return null;
+      }
+      stack.push(math::sqrt(item));
+      break;
+
+      default:
+      // printfn("Pushing to the stack: %s", tok);
+      float! num = tok.to_float();
+      if (catch excuse = num) {
+        eprintfn("Failed to transform item(%s) to float: %s", tok, excuse);
+        return null;
+      }
+      stack.push(num);
+      break;
+    }
+  }
+
+
+  dstr.append_chars("Stack result:");
+  foreach(item: stack) {
+    dstr.appendf(" %f", item);
+    // switch (item) {
+    //   case float:
+    //   dstr.appendf("%f", *item);
+    //   break;
+    //   case String:
+    //   dstr.appendf("%s", *item);
+    //   break;
+    // }
+  }
+  
+  String msg = dstr.str_view();
+  printn(msg);
+  msg.free();
+  
+  return l.result;
+}
+
+
 
 fn Node* new_tnode(char kind) @export("new_tnode") @wasm {
   Node* node = @tclone(Node { .kind = (NodeKind) kind });
@@ -289,6 +483,7 @@ fn ResultFlt3* Node.as_triple_value(Node* f, float x, float y, float t) @export(
   });
 }
 
+
 fn Rule* new_rule() @export("new_rule") @wasm {
   Rule* rule = mem::new(Rule);
   rule.new_init();
@@ -352,6 +547,10 @@ fn void free_grammar(Grammar* g) @export("free_grammar") @wasm {
 }
 
 
+fn void* mem_malloc_char(usz len) @export("mem_malloc_char") @wasm {
+  return mem::malloc(char.sizeof * len);
+}
+
 fn void mem_free(void* ptr) @export("mem_free") @wasm {
   mem::free(ptr);
 }
@@ -365,4 +564,21 @@ fn void temp_free(void* ptr) @inline @export("temp_free") @wasm {
 * ----------------------
 */
 
-extern fn void eprintn(usz len, char* str);
+extern fn void _js_printn(usz len, char* str) @extern("printn");
+fn void printn(String message) {
+  _js_printn(message.len, &message[0]);
+}
+fn void printfn(String fmt, data...) {
+  String message = string::tformat(fmt, ...data);
+  printn(message);
+  message.free(allocator::temp());
+}
+extern fn void _js_eprintn(usz len, char* str) @extern("eprintn");
+fn void eprintn(String message) {
+  _js_eprintn(message.len, &message[0]);
+}
+fn void eprintfn(String fmt, data...) {
+  String message = string::tformat(fmt, ...data);
+  eprintn(message);
+  message.free(allocator::temp());
+}

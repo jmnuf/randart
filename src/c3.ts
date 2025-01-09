@@ -305,6 +305,13 @@ export function read_string(exports: WebAssembly.Exports, ptr: Ptr) {
   }) as Str;
 }
 
+export function read_string_with_len(exports: WebAssembly.Exports, ptr: Ptr, len: number) {
+  const memory = exports.memory as WebAssembly.Memory;
+  const buffer = memory.buffer;
+  const bytes = new Uint8Array(buffer, ptr, len);
+  return new TextDecoder().decode(bytes);
+}
+
 export function* quickUse<T extends { free(): void; }>(init: () => T, cb: (inst: T) => any) {
   const inst = init();
   yield cb(inst);
@@ -321,7 +328,7 @@ export function* quickUse<T extends { free(): void; }>(init: () => T, cb: (inst:
  * -----------------------------
  */
 export function create_constructors(wasm: WebAssembly.WebAssemblyInstantiatedSource) {
-  const exports = wasm.instance.exports;
+  const exports = wasm.instance.exports as WasmModuleExports;
 
   const ResultFlt = (() => {
     const cfree = exports.ResultFlt_free as (self: Ptr) => void;
@@ -549,6 +556,9 @@ export function create_constructors(wasm: WebAssembly.WebAssemblyInstantiatedSou
     }
   })();
 
+  const parse_function_from_cstr = exports.parse_function_from_cstr as (cstr: Ptr) => Ptr;
+  const mem_malloc_cstr = exports.mem_malloc_char as (len: number) => Ptr;
+  const mem_free = exports.mem_free as (ptr: Ptr) => void;
 
   return {
     struct: {
@@ -556,6 +566,20 @@ export function create_constructors(wasm: WebAssembly.WebAssemblyInstantiatedSou
       Node,
       NTriop,
     },
+    mem: {
+      free: mem_free,
+      alloc_cstr(str: string): { ptr: Ptr; free(): void; } {
+        const bytes = new TextEncoder().encode(str);
+        const ptr = mem_malloc_cstr(bytes.length + 1);
+        const buf = new Uint8Array(exports.memory.buffer, ptr, bytes.length + 1);
+        for (let i = 0; i < bytes.length; ++i) {
+          buf[i] = bytes[i]
+        }
+        buf[bytes.length] = 0;
+        return { ptr, free() { mem_free(ptr); } };
+      },
+    },
     tempNode,
+    parse_function_from_cstr,
   };
 }
