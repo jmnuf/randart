@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:bld": "c3c compile-run -o bld bld.c3",
+    "build:wasm": "bld wasm",
     "preview": "vite preview"
   },
   "devDependencies": {

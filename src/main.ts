@@ -1,31 +1,5 @@
 import { run, pipe, Enums, sleep } from "./yielder";
-import type { Result, Option } from "./yielder";
-
-const Result = Enums.Result;
-const Option = Enums.Option;
-
-const NK = Enums.create(
-  // Enum Name:
-  "NodeKind",
-  // Keys:
-  "X",
-  "Y",
-  "T",
-  "Random",
-  "Rule",
-  "Number",
-  "Bool",
-  "Sqrt",
-  "Add",
-  "Mult",
-  "Mod",
-  "GT",
-  "Triple",
-  "If",
-);
-
-console.log(`NK Count is ${NK.count()}`);
-console.assert(NK.count() == 14, "Exhaustive check of NodeKind");
+import { NK, Result, Option } from "./randart-types";
 
 // ERRORS
 class MissingCanvas extends Error {
@@ -236,10 +210,10 @@ run(function* main() {
 
 type VarNode = {
   kind:
-    | (typeof NK)["X"]
-    | (typeof NK)["Y"]
-    | (typeof NK)["T"]
-    | (typeof NK)["Random"];
+  | (typeof NK)["X"]
+  | (typeof NK)["Y"]
+  | (typeof NK)["T"]
+  | (typeof NK)["Random"];
 };
 type RuleNode = { kind: (typeof NK)["Rule"]; rule: number };
 type NumberNode = { kind: (typeof NK)["Number"]; value: number };
